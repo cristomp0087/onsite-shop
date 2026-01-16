@@ -41,20 +41,24 @@ export async function POST(request: NextRequest) {
       try {
         // Update order status to paid
         if (orderId) {
+          // Get shipping details from collected_information (new API) or shipping_details (legacy)
+          const shippingDetails = (session as any).collected_information?.shipping_details
+            || (session as any).shipping_details;
+
           const { error: updateError } = await supabase
             .from('orders')
             .update({
               status: 'paid',
               paid_at: new Date().toISOString(),
               stripe_payment_intent_id: session.payment_intent as string,
-              shipping_address: session.shipping_details?.address ? {
-                name: session.shipping_details.name,
-                street: session.shipping_details.address.line1,
-                apartment: session.shipping_details.address.line2,
-                city: session.shipping_details.address.city,
-                province: session.shipping_details.address.state,
-                postal_code: session.shipping_details.address.postal_code,
-                country: session.shipping_details.address.country,
+              shipping_address: shippingDetails?.address ? {
+                name: shippingDetails.name,
+                street: shippingDetails.address.line1,
+                apartment: shippingDetails.address.line2,
+                city: shippingDetails.address.city,
+                province: shippingDetails.address.state,
+                postal_code: shippingDetails.address.postal_code,
+                country: shippingDetails.address.country,
               } : null,
             })
             .eq('id', orderId);
