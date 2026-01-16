@@ -31,14 +31,15 @@ interface FloatingProduct extends Product {
 }
 
 // Card dimensions for collision detection (in viewport %)
+// Increased sizes to match visual sizes and prevent overlap
 const CARD_SIZES = {
-  center: { width: 12, height: 18 }, // larger cards
-  side: { width: 9, height: 14 },    // smaller cards
+  center: { width: 18, height: 26 }, // larger cards (increased from 12x18)
+  side: { width: 14, height: 20 },   // smaller cards (increased from 9x14)
 };
 
 // Check if two products overlap
 function checkOverlap(a: FloatingProduct, b: FloatingProduct): boolean {
-  const buffer = 2; // % buffer between cards
+  const buffer = 5; // % buffer between cards (increased from 2%)
   return !(
     a.x + a.width / 2 + buffer < b.x - b.width / 2 ||
     a.x - a.width / 2 - buffer > b.x + b.width / 2 ||
@@ -47,22 +48,23 @@ function checkOverlap(a: FloatingProduct, b: FloatingProduct): boolean {
   );
 }
 
-// Find valid position without overlap
+// Find valid position without overlap - checks ALL products, not just same zone
 function findValidPosition(
   zone: 'left' | 'center' | 'right',
   existingProducts: FloatingProduct[],
   yStart: number
 ): { x: number; y: number } {
-  const xRange = zone === 'left' ? [8, 28] : zone === 'center' ? [38, 62] : [72, 92];
+  // Separated zones with more gap between them
+  const xRange = zone === 'left' ? [5, 22] : zone === 'center' ? [40, 60] : [78, 95];
   const isCenter = zone === 'center';
   const cardSize = isCenter ? CARD_SIZES.center : CARD_SIZES.side;
 
   let attempts = 0;
-  const maxAttempts = 30;
+  const maxAttempts = 50;
 
   while (attempts < maxAttempts) {
     const x = xRange[0] + Math.random() * (xRange[1] - xRange[0]);
-    const y = yStart + (Math.random() * 20 - 10); // vary Y slightly
+    const y = yStart + (Math.random() * 15 - 7.5); // vary Y slightly (reduced from 20)
 
     const testProduct = {
       x,
@@ -71,9 +73,8 @@ function findValidPosition(
       height: cardSize.height,
     } as FloatingProduct;
 
-    // Check overlap with same-zone products only
-    const zoneProducts = existingProducts.filter(p => p.zone === zone);
-    const hasOverlap = zoneProducts.some(p => checkOverlap(testProduct, p));
+    // Check overlap with ALL products, not just same-zone
+    const hasOverlap = existingProducts.some(p => checkOverlap(testProduct, p));
 
     if (!hasOverlap) {
       return { x, y };
@@ -85,7 +86,7 @@ function findValidPosition(
   // Fallback: place at bottom with offset
   return {
     x: xRange[0] + Math.random() * (xRange[1] - xRange[0]),
-    y: yStart + 25,
+    y: yStart + 30,
   };
 }
 
@@ -412,7 +413,8 @@ function FloatingProductCard({
   onClick: () => void;
 }) {
   const isCenter = product.zone === 'center';
-  const size = isCenter ? 'w-32 h-32 md:w-44 md:h-44' : 'w-24 h-24 md:w-36 md:h-36';
+  // Increased visual sizes to match collision detection and be more prominent
+  const size = isCenter ? 'w-40 h-40 md:w-52 md:h-52' : 'w-32 h-32 md:w-44 md:h-44';
 
   // Center column: less blur (85% solid), sides: more blur (40% solid)
   const maskGradient = isCenter
@@ -538,8 +540,8 @@ export default function ShopPage() {
 
     zones.forEach((zone) => {
       const isCenter = zone === 'center';
-      // Mobile: more products in center column
-      const count = isMobile ? 5 : (isCenter ? 3 : 4);
+      // Reduced count per zone to prevent overlap with larger cards
+      const count = isMobile ? 4 : (isCenter ? 2 : 3);
       const cardSize = isCenter ? CARD_SIZES.center : CARD_SIZES.side;
 
       // Distribute Y positions evenly with some variance
