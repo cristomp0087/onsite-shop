@@ -13,7 +13,7 @@ export default function CartPage() {
   // Check if user is logged in
   useEffect(() => {
     const supabase = createClient();
-    supabase.auth.getUser().then(({ data }) => {
+    supabase.auth.getUser().then(({ data }: { data: { user: any } }) => {
       setUser(data.user);
     });
   }, []);
