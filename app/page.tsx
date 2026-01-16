@@ -33,8 +33,8 @@ interface FloatingProduct extends Product {
 // Card dimensions for collision detection (in viewport %)
 // Increased sizes to match visual sizes and prevent overlap
 const CARD_SIZES = {
-  center: { width: 18, height: 26 }, // larger cards (increased from 12x18)
-  side: { width: 14, height: 20 },   // smaller cards (increased from 9x14)
+  center: { width: 22, height: 32 }, // larger cards for center (bigger images)
+  side: { width: 14, height: 20 },   // smaller cards for sides
 };
 
 // Check if two products overlap
@@ -413,8 +413,8 @@ function FloatingProductCard({
   onClick: () => void;
 }) {
   const isCenter = product.zone === 'center';
-  // Increased visual sizes to match collision detection and be more prominent
-  const size = isCenter ? 'w-40 h-40 md:w-52 md:h-52' : 'w-32 h-32 md:w-44 md:h-44';
+  // Center images are bigger, sides are smaller
+  const size = isCenter ? 'w-48 h-48 md:w-64 md:h-64' : 'w-32 h-32 md:w-44 md:h-44';
 
   // Center column: less blur (85% solid), sides: more blur (40% solid)
   const maskGradient = isCenter
@@ -507,13 +507,9 @@ export default function ShopPage() {
   const [floatingProducts, setFloatingProducts] = useState<FloatingProduct[]>([]);
   const [isMobile, setIsMobile] = useState(false);
   const [products, setProducts] = useState<Product[]>(MOCK_PRODUCTS);
-  const [isManualScroll, setIsManualScroll] = useState(false); // Toggle between auto-loop and manual scroll
   const animationRef = useRef<number | null>(null);
-  const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null); // Timer to return to auto-loop
-  const lastScrollTime = useRef(Date.now());
+  const scrollDeltaRef = useRef(0); // Accumulated scroll delta to add to animation
   const cartItems = useCartStore((state) => state.items);
-
-  const INACTIVITY_TIMEOUT = 3000; // Return to auto-loop after 3 seconds of inactivity
 
   // Load products from Supabase
   useEffect(() => {
@@ -540,16 +536,17 @@ export default function ShopPage() {
 
     zones.forEach((zone) => {
       const isCenter = zone === 'center';
-      // Reduced count per zone to prevent overlap with larger cards
-      const count = isMobile ? 4 : (isCenter ? 2 : 3);
+      // More products per zone for continuous flow (no gaps between loops)
+      const count = isMobile ? 5 : (isCenter ? 3 : 4);
       const cardSize = isCenter ? CARD_SIZES.center : CARD_SIZES.side;
 
-      // Distribute Y positions evenly with some variance
-      const ySpacing = 100 / count;
+      // Distribute Y positions across 120% to fill screen and have buffer
+      const ySpacing = 120 / count;
 
       for (let i = 0; i < count; i++) {
         const product = categoryProducts[Math.floor(Math.random() * categoryProducts.length)];
-        const baseY = i * ySpacing + ySpacing / 2;
+        // Start from -10% to have products ready above viewport
+        const baseY = -10 + i * ySpacing + ySpacing / 2;
 
         // Mobile: use wider center range
         const mobileXRange = [25, 75];
@@ -578,28 +575,32 @@ export default function ShopPage() {
     initializeProducts();
   }, [initializeProducts]);
 
-  // Animation loop - only runs when NOT in manual scroll mode
+  // Animation loop - ALWAYS runs, never stops
   useEffect(() => {
-    if (isManualScroll) {
-      // Stop animation when in manual scroll mode
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-        animationRef.current = null;
-      }
-      return;
-    }
-
     const animate = () => {
+      // Get scroll delta and reset it
+      const scrollDelta = scrollDeltaRef.current;
+      scrollDeltaRef.current = 0;
+
       setFloatingProducts(prev => {
         const updated = [...prev];
 
         for (let i = 0; i < updated.length; i++) {
           const product = updated[i];
-          let newY = product.y - product.speed;
+          // Combine auto-scroll speed with user scroll delta
+          let newY = product.y - product.speed + scrollDelta;
 
           // Loop: when product goes off top, reset to bottom with valid position
-          if (newY < -20) {
-            const pos = findValidPosition(product.zone, updated.filter((_, idx) => idx !== i), 115);
+          if (newY < -25) {
+            const pos = findValidPosition(product.zone, updated.filter((_, idx) => idx !== i), 110);
+            updated[i] = {
+              ...product,
+              y: pos.y,
+              x: pos.x,
+            };
+          } else if (newY > 120) {
+            // If scrolling down and product goes off bottom, reset to top
+            const pos = findValidPosition(product.zone, updated.filter((_, idx) => idx !== i), -15);
             updated[i] = {
               ...product,
               y: pos.y,
@@ -623,51 +624,19 @@ export default function ShopPage() {
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [isManualScroll]);
+  }, []);
 
-  // Reset inactivity timer - returns to auto-loop after timeout
-  const resetInactivityTimer = useCallback(() => {
-    // Clear existing timer
-    if (inactivityTimerRef.current) {
-      clearTimeout(inactivityTimerRef.current);
-    }
-    // Set new timer to return to auto-loop
-    inactivityTimerRef.current = setTimeout(() => {
-      setIsManualScroll(false);
-    }, INACTIVITY_TIMEOUT);
-  }, [INACTIVITY_TIMEOUT]);
-
-  // Handle scroll/touch - switch to manual scroll mode on first interaction
+  // Handle scroll/touch - add delta to animation (never stops the loop)
   useEffect(() => {
     let lastTouchY = 0;
 
     const handleWheel = (e: WheelEvent) => {
-      // Switch to manual mode
-      if (!isManualScroll) {
-        setIsManualScroll(true);
-      }
-
-      // Reset inactivity timer on each scroll
-      resetInactivityTimer();
-
-      // Apply scroll delta to all products
-      const delta = e.deltaY * 0.05; // Convert wheel delta to % movement
-      setFloatingProducts(prev => {
-        return prev.map(product => ({
-          ...product,
-          y: product.y + delta,
-        }));
-      });
+      // Accumulate scroll delta (will be applied in animation loop)
+      scrollDeltaRef.current += e.deltaY * 0.03;
     };
 
     const handleTouchStart = (e: TouchEvent) => {
       lastTouchY = e.touches[0].clientY;
-      // Switch to manual mode
-      if (!isManualScroll) {
-        setIsManualScroll(true);
-      }
-      // Reset inactivity timer
-      resetInactivityTimer();
     };
 
     const handleTouchMove = (e: TouchEvent) => {
@@ -675,17 +644,8 @@ export default function ShopPage() {
       const deltaY = lastTouchY - touchY;
       lastTouchY = touchY;
 
-      // Reset inactivity timer on each move
-      resetInactivityTimer();
-
-      // Apply touch delta to all products (inverted for natural scroll feel)
-      const delta = deltaY * 0.15; // Convert touch delta to % movement
-      setFloatingProducts(prev => {
-        return prev.map(product => ({
-          ...product,
-          y: product.y - delta,
-        }));
-      });
+      // Accumulate touch delta (will be applied in animation loop)
+      scrollDeltaRef.current -= deltaY * 0.1;
     };
 
     window.addEventListener('wheel', handleWheel, { passive: true });
@@ -696,12 +656,8 @@ export default function ShopPage() {
       window.removeEventListener('wheel', handleWheel);
       window.removeEventListener('touchstart', handleTouchStart);
       window.removeEventListener('touchmove', handleTouchMove);
-      // Clear timer on cleanup
-      if (inactivityTimerRef.current) {
-        clearTimeout(inactivityTimerRef.current);
-      }
     };
-  }, [isManualScroll, resetInactivityTimer]);
+  }, []);
 
   const categories: Array<{ key: 'mens' | 'womens' | 'members'; label: string }> = [
     { key: 'mens', label: 'MENS' },
@@ -804,16 +760,7 @@ export default function ShopPage() {
       {selectedProduct && (
         <ProductModal
           product={selectedProduct}
-          onClose={() => {
-            setSelectedProduct(null);
-            // Restart auto-loop when closing modal
-            setIsManualScroll(false);
-            // Clear any pending inactivity timer
-            if (inactivityTimerRef.current) {
-              clearTimeout(inactivityTimerRef.current);
-              inactivityTimerRef.current = null;
-            }
-          }}
+          onClose={() => setSelectedProduct(null)}
         />
       )}
 
