@@ -31,10 +31,10 @@ interface FloatingProduct extends Product {
 }
 
 // Card dimensions for collision detection (in viewport %)
-// Increased sizes to match visual sizes and prevent overlap
+// Must match visual sizes to prevent overlap
 const CARD_SIZES = {
-  center: { width: 22, height: 32 }, // larger cards for center (bigger images)
-  side: { width: 14, height: 20 },   // smaller cards for sides
+  center: { width: 24, height: 42 }, // larger cards for center (w-64 ~ 16rem ~ 20-25vh)
+  side: { width: 14, height: 22 },   // smaller cards for sides
 };
 
 // Check if two products overlap
@@ -536,17 +536,19 @@ export default function ShopPage() {
 
     zones.forEach((zone) => {
       const isCenter = zone === 'center';
-      // More products per zone for continuous flow (no gaps between loops)
-      const count = isMobile ? 5 : (isCenter ? 3 : 4);
+      // Center: fewer but larger images, sides: more but smaller
+      const count = isMobile ? 4 : (isCenter ? 2 : 4);
       const cardSize = isCenter ? CARD_SIZES.center : CARD_SIZES.side;
 
-      // Distribute Y positions across 120% to fill screen and have buffer
-      const ySpacing = 120 / count;
+      // Center needs more vertical space between products
+      const totalSpan = isCenter ? 140 : 130; // % of viewport height to distribute across
+      const ySpacing = totalSpan / count;
 
       for (let i = 0; i < count; i++) {
         const product = categoryProducts[Math.floor(Math.random() * categoryProducts.length)];
-        // Start from -10% to have products ready above viewport
-        const baseY = -10 + i * ySpacing + ySpacing / 2;
+        // Start from -20% for center (more buffer), -10% for sides
+        const startY = isCenter ? -20 : -15;
+        const baseY = startY + i * ySpacing + ySpacing / 2;
 
         // Mobile: use wider center range
         const mobileXRange = [25, 75];
