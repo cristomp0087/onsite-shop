@@ -160,16 +160,36 @@ function BackgroundSystem({ scrollProgress }: { scrollProgress: number }) {
 
   return (
     <>
-      {/* Blueprint Backplate - subtle technical grid */}
+      {/* User's Blueprint Background Image - seamless tiling with parallax */}
       <div
-        className="absolute inset-0 opacity-[0.03]"
+        className="absolute inset-0"
+        style={{
+          backgroundImage: `url('/assets/background-parallax.png')`,
+          backgroundSize: 'auto 100vh', // Keep aspect ratio, height = viewport
+          backgroundPosition: `center ${parallaxOffset * 10}px`, // Parallax moves the pattern
+          backgroundRepeat: 'repeat', // Infinite seamless tiling
+          opacity: 0.25,
+          filter: 'blur(0.5px)',
+        }}
+      />
+      {/* Blueprint Backplate - subtle technical grid (BEFORE vignette so it's visible) */}
+      <div
+        className="absolute inset-0 opacity-[0.15]"
         style={{
           backgroundImage: `
             linear-gradient(90deg, #1B2B27 1px, transparent 1px),
             linear-gradient(#1B2B27 1px, transparent 1px)
           `,
-          backgroundSize: '60px 60px',
+          backgroundSize: '360px 360px', // Tripled spacing (120 * 3)
           transform: `translateY(${parallaxOffset}%)`,
+        }}
+      />
+
+      {/* Vignette mask to fade edges and keep center calm */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background: `radial-gradient(ellipse 70% 60% at 50% 50%, transparent 30%, rgba(212, 207, 196, 0.6) 100%)`,
         }}
       />
 
@@ -212,20 +232,95 @@ function BackgroundSystem({ scrollProgress }: { scrollProgress: number }) {
   );
 }
 
-// Side Progress Indicator
-function ProgressIndicator({ progress, totalProducts }: { progress: number; totalProducts: number }) {
+// Draggable Scroll Progress Bar
+function DraggableScrollBar({
+  progress,
+  onProgressChange
+}: {
+  progress: number;
+  onProgressChange: (newProgress: number) => void;
+}) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+    updateProgressFromMouse(e.clientY);
+  };
+
+  const updateProgressFromMouse = useCallback((clientY: number) => {
+    if (!trackRef.current) return;
+    const rect = trackRef.current.getBoundingClientRect();
+    const relativeY = clientY - rect.top;
+    const percentage = Math.max(0, Math.min(100, (relativeY / rect.height) * 100));
+    onProgressChange(percentage);
+  }, [onProgressChange]);
+
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      updateProgressFromMouse(e.clientY);
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging, updateProgressFromMouse]);
+
   return (
-    <div className="fixed right-4 top-1/2 -translate-y-1/2 z-30 hidden md:flex flex-col items-center gap-2">
-      {/* Progress track */}
-      <div className="w-[2px] h-24 bg-[#1B2B27]/10 rounded-full overflow-hidden">
+    <div
+      className="fixed right-4 md:right-8 z-40 hidden md:flex flex-col items-center"
+      style={{ top: 'calc(50% + 100px)' }} // Below the right sidebar menu
+    >
+      {/* Track */}
+      <div
+        ref={trackRef}
+        className={`relative w-[3px] h-32 rounded-full cursor-pointer transition-all duration-200
+          ${isDragging || isHovered ? 'bg-[#1B2B27]/20 w-[4px]' : 'bg-[#1B2B27]/10'}`}
+        onMouseDown={handleMouseDown}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+      >
+        {/* Progress fill */}
         <div
-          className="w-full bg-[#F6C343]/60 rounded-full transition-all duration-300"
+          className={`absolute top-0 left-0 right-0 rounded-full transition-colors duration-200
+            ${isDragging ? 'bg-[#B8860B]' : 'bg-[#B8860B]/60'}`}
           style={{ height: `${progress}%` }}
         />
+
+        {/* Draggable thumb */}
+        <div
+          className={`absolute left-1/2 -translate-x-1/2 rounded-full transition-all duration-200 cursor-grab
+            ${isDragging
+              ? 'w-4 h-4 bg-[#B8860B] shadow-lg cursor-grabbing'
+              : isHovered
+                ? 'w-3 h-3 bg-[#B8860B]/80'
+                : 'w-2 h-2 bg-[#B8860B]/60'
+            }`}
+          style={{
+            top: `${progress}%`,
+            transform: 'translate(-50%, -50%)',
+          }}
+        />
       </div>
-      {/* Product count */}
-      <span className="font-mono text-[10px] text-[#1B2B27]/40 tracking-wider">
-        {totalProducts}
+
+      {/* Loop indicator label */}
+      <span
+        className={`font-mono text-[10px] tracking-wider mt-2 transition-all duration-200
+          ${isDragging ? 'text-[#1B2B27]/80' : 'text-[#1B2B27]/40'}`}
+      >
+        {Math.round(progress)}%
       </span>
     </div>
   );
@@ -281,8 +376,8 @@ function findValidPosition(
   existingProducts: FloatingProduct[],
   yStart: number
 ): { x: number; y: number } {
-  // Separated zones with more gap between them
-  const xRange = zone === 'left' ? [5, 22] : zone === 'center' ? [40, 60] : [78, 95];
+  // Separated zones - leave space for side menus (left: 0-12%, right: 88-100%)
+  const xRange = zone === 'left' ? [14, 28] : zone === 'center' ? [38, 62] : [72, 86];
   const isCenter = zone === 'center';
   const cardSize = isCenter ? CARD_SIZES.center : CARD_SIZES.side;
 
@@ -473,9 +568,9 @@ function ProductModal({
         }}
       />
 
-      {/* Modal - wider on desktop for horizontal layout */}
+      {/* Modal - taller for bigger image, glass effect */}
       <div
-        className="relative bg-[#F5F3EF] rounded-2xl w-full max-w-md md:max-w-4xl max-h-[90vh] overflow-y-auto md:overflow-hidden shadow-2xl"
+        className="relative bg-[#F5F3EF] rounded-2xl w-full max-w-md md:max-w-5xl max-h-[95vh] overflow-y-auto md:overflow-hidden shadow-2xl"
         onClick={(e) => e.stopPropagation()}
         style={{
           // Focus ritual: micro-compression and scale animation
@@ -497,16 +592,65 @@ function ProductModal({
         </button>
 
         {/* Desktop: Horizontal layout | Mobile: Vertical layout */}
-        <div className="flex flex-col md:flex-row">
-          {/* Image section with carousel */}
-          <div className="md:w-1/2 p-6 md:p-8">
-            {/* Main image with carousel controls */}
-            <div className="relative aspect-square bg-white rounded-xl flex items-center justify-center overflow-hidden">
+        <div className="flex flex-col md:flex-row md:min-h-[70vh]">
+          {/* Image section with carousel - larger area */}
+          <div className="md:w-3/5 p-4 md:p-6">
+            {/* Main image with ultra-realistic crystal glass effect */}
+            <div
+              className="relative aspect-[4/5] md:aspect-auto md:h-full rounded-xl overflow-hidden"
+              style={{
+                background: 'linear-gradient(135deg, #ffffff 0%, #fafafa 100%)',
+                boxShadow: `
+                  inset 0 2px 4px rgba(255,255,255,1),
+                  inset 0 -1px 2px rgba(0,0,0,0.04),
+                  0 0 0 1px rgba(255,255,255,0.6),
+                  0 8px 32px rgba(0,0,0,0.12),
+                  0 2px 8px rgba(0,0,0,0.08)
+                `,
+              }}
+            >
+              {/* Top-left glass reflection highlight - premium specular */}
+              <div
+                className="absolute inset-0 pointer-events-none z-20"
+                style={{
+                  background: `linear-gradient(
+                    135deg,
+                    rgba(255,255,255,0.7) 0%,
+                    rgba(255,255,255,0.25) 20%,
+                    rgba(255,255,255,0.05) 40%,
+                    transparent 60%
+                  )`,
+                  borderRadius: 'inherit',
+                }}
+              />
+
+              {/* Edge highlight - glass rim lighting */}
+              <div
+                className="absolute inset-0 pointer-events-none z-20"
+                style={{
+                  border: '1px solid rgba(255,255,255,0.9)',
+                  borderRadius: 'inherit',
+                  boxShadow: `
+                    inset 0 1px 0 rgba(255,255,255,1),
+                    inset 1px 0 0 rgba(255,255,255,0.5),
+                    inset 0 -1px 0 rgba(0,0,0,0.03)
+                  `,
+                }}
+              />
+
+              {/* Image with maximum sharpness and clarity */}
               {allImages[selectedImage] ? (
                 <img
                   src={allImages[selectedImage]}
                   alt={product.name}
                   className="w-full h-full object-cover"
+                  style={{
+                    filter: 'contrast(1.08) brightness(1.02) saturate(1.05)',
+                    imageRendering: '-webkit-optimize-contrast',
+                    WebkitBackfaceVisibility: 'hidden',
+                    backfaceVisibility: 'hidden',
+                    transform: 'translateZ(0)',
+                  }}
                   onError={(e) => {
                     (e.target as HTMLImageElement).style.display = 'none';
                   }}
@@ -543,7 +687,7 @@ function ProductModal({
                       key={idx}
                       onClick={(e) => { e.stopPropagation(); setSelectedImage(idx); }}
                       className={`w-2 h-2 rounded-full transition-colors ${
-                        selectedImage === idx ? 'bg-[#F6C343]' : 'bg-white/60'
+                        selectedImage === idx ? 'bg-[#B8860B]' : 'bg-white/60'
                       }`}
                     />
                   ))}
@@ -551,14 +695,14 @@ function ProductModal({
               )}
             </div>
 
-            {/* Thumbnail strip - visible on mobile, hidden on desktop since we have carousel */}
-            <div className="flex gap-2 mt-3 md:hidden">
+            {/* Thumbnail strip - visible on mobile only */}
+            <div className="flex gap-2 mt-2 md:hidden">
               {allImages.slice(0, 3).map((imgUrl, idx) => (
                 <button
                   key={idx}
                   onClick={() => setSelectedImage(idx)}
                   className={`flex-1 aspect-square rounded-lg overflow-hidden border-2 transition-colors ${
-                    selectedImage === idx ? 'border-[#F6C343]' : 'border-transparent'
+                    selectedImage === idx ? 'border-[#B8860B]' : 'border-transparent'
                   }`}
                 >
                   {imgUrl ? (
@@ -580,31 +724,31 @@ function ProductModal({
             </div>
           </div>
 
-          {/* Product info section */}
-          <div className="md:w-1/2 p-6 md:p-8 md:pl-0 flex flex-col">
-            {/* Product info */}
-            <h2 className="font-mono text-2xl font-bold text-[#1B2B27] mb-2">
+          {/* Product info section - more compact */}
+          <div className="md:w-2/5 p-4 md:p-6 md:pl-2 flex flex-col">
+            {/* Product info - reduced spacing */}
+            <h2 className="font-mono text-xl font-bold text-[#1B2B27] mb-1">
               {product.name}
             </h2>
-            <p className="font-mono text-xl text-[#F6C343] font-bold mb-4">
+            <p className="font-mono text-lg text-[#B8860B] font-bold mb-2">
               CA${product.price.toFixed(2)}
             </p>
-            <p className="text-[#6B7280] mb-6 leading-relaxed text-sm">
+            <p className="text-[#6B7280] mb-4 leading-snug text-xs">
               {product.description}
             </p>
 
-            {/* Size selector */}
+            {/* Size selector - compact */}
             {product.sizes.length > 1 && (
-              <div className="mb-4">
-                <p className="font-mono text-sm text-[#1B2B27] mb-2 uppercase tracking-wider">
+              <div className="mb-3">
+                <p className="font-mono text-xs text-[#1B2B27] mb-1.5 uppercase tracking-wider">
                   Tamanho
                 </p>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-1.5">
                   {product.sizes.map((size) => (
                     <button
                       key={size}
                       onClick={() => setSelectedSize(size)}
-                      className={`px-3 py-1.5 rounded-lg font-mono text-sm transition-all ${
+                      className={`px-2.5 py-1 rounded-md font-mono text-xs transition-all ${
                         selectedSize === size
                           ? 'bg-[#1B2B27] text-white'
                           : 'bg-white text-[#1B2B27] hover:bg-gray-100'
@@ -617,18 +761,18 @@ function ProductModal({
               </div>
             )}
 
-            {/* Color selector */}
+            {/* Color selector - compact */}
             {product.colors.length > 1 && (
-              <div className="mb-6">
-                <p className="font-mono text-sm text-[#1B2B27] mb-2 uppercase tracking-wider">
+              <div className="mb-4">
+                <p className="font-mono text-xs text-[#1B2B27] mb-1.5 uppercase tracking-wider">
                   Cor
                 </p>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-1.5">
                   {product.colors.map((color) => (
                     <button
                       key={color}
                       onClick={() => setSelectedColor(color)}
-                      className={`px-3 py-1.5 rounded-lg font-mono text-sm transition-all ${
+                      className={`px-2.5 py-1 rounded-md font-mono text-xs transition-all ${
                         selectedColor === color
                           ? 'bg-[#1B2B27] text-white'
                           : 'bg-white text-[#1B2B27] hover:bg-gray-100'
@@ -644,17 +788,17 @@ function ProductModal({
             {/* Spacer to push buttons to bottom on desktop */}
             <div className="flex-grow" />
 
-            {/* Action buttons */}
-            <div className="flex gap-3 mt-auto">
+            {/* Action buttons - compact */}
+            <div className="flex gap-2 mt-auto">
               <button
                 onClick={handleAddToCart}
-                className="flex-1 bg-[#1B2B27] text-white font-mono py-3 px-4 rounded-xl hover:bg-[#2a3d38] transition-colors uppercase tracking-wider text-sm"
+                className="flex-1 bg-[#1B2B27] text-white font-mono py-2.5 px-3 rounded-lg hover:bg-[#2a3d38] transition-colors uppercase tracking-wider text-xs"
               >
                 Add to Bag
               </button>
               <button
                 onClick={handleCheckout}
-                className="flex-1 bg-[#F6C343] text-[#1B2B27] font-mono py-3 px-4 rounded-xl hover:bg-[#e5b43d] transition-colors uppercase tracking-wider text-sm font-bold"
+                className="flex-1 bg-[#B8860B] text-[#1B2B27] font-mono py-2.5 px-3 rounded-lg hover:bg-[#9A7209] transition-colors uppercase tracking-wider text-xs font-bold"
               >
                 Checkout
               </button>
@@ -720,6 +864,11 @@ function FloatingProductCard({
   const pressScale = isPressed ? 0.98 : 1; // Micro-compression
   const finalScale = baseScale * hoverScale * pressScale;
 
+  // Floating shadow - larger offset and blur = appears far from background
+  const floatingShadow = isCenter
+    ? '0 40px 60px -20px rgba(0,0,0,0.15), 0 25px 35px -15px rgba(0,0,0,0.1)'
+    : '0 30px 45px -15px rgba(0,0,0,0.12), 0 20px 25px -10px rgba(0,0,0,0.08)';
+
   return (
     <div
       className="absolute cursor-pointer"
@@ -728,13 +877,26 @@ function FloatingProductCard({
         top: `${product.y}%`,
         transform: `translate(-50%, -50%) scale(${finalScale})`,
         zIndex: isHovered ? 50 : (isCenter ? 20 : 10),
-        transition: 'transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1)', // Slight overshoot
+        transition: 'transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1), filter 200ms ease-out',
+        filter: `drop-shadow(${isHovered ? '0 50px 70px rgba(0,0,0,0.2)' : floatingShadow.split(',')[0].replace('box-shadow:', '').trim()})`,
       }}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onMouseDown={handleMouseDown}
       onMouseUp={handleMouseUp}
     >
+      {/* Floating shadow layer - distant soft shadow */}
+      <div
+        className="absolute inset-0 rounded-full"
+        style={{
+          transform: 'translateY(30px) scale(0.85)',
+          background: 'radial-gradient(ellipse 100% 60% at 50% 50%, rgba(0,0,0,0.12) 0%, transparent 70%)',
+          filter: 'blur(15px)',
+          opacity: isHovered ? 0.8 : 0.5,
+          transition: 'opacity 200ms ease-out',
+        }}
+      />
+
       {/* Image with gradient fade border */}
       <div className={`relative ${size} flex items-center justify-center`}>
         {/* Gradient mask for soft edges - less blur on center */}
@@ -787,7 +949,7 @@ function FloatingProductCard({
         <p
           className="font-mono text-sm font-bold drop-shadow-sm transition-all duration-200"
           style={{
-            color: isHovered ? '#e5b43d' : '#F6C343',
+            color: isHovered ? '#9A7209' : '#B8860B',
             transform: isHovered ? 'scale(1.05)' : 'scale(1)',
           }}
         >
@@ -898,7 +1060,7 @@ export default function ShopPage() {
           x: pos.x,
           y: pos.y,
           zone,
-          scale: isMobile ? 1.0 : (isCenter ? 1.21 : 0.9), // Center images 10% larger (1.1 * 1.1 = 1.21)
+          scale: isMobile ? 1.0 : (isCenter ? 1.33 : 0.9), // Center images +10% larger (1.21 * 1.1 = 1.33)
           speed: isMobile ? 0.025 : (isCenter ? 0.02 : 0.03),
           width: cardSize.width,
           height: cardSize.height,
@@ -1032,8 +1194,17 @@ export default function ShopPage() {
       {/* Custom Cursor - desktop only */}
       <CustomCursor isHovering={isHoveringProduct} label={isHoveringProduct ? 'VIEW' : ''} />
 
-      {/* Progress Indicator */}
-      <ProgressIndicator progress={scrollProgress} totalProducts={categoryProductCount} />
+      {/* Draggable Scroll Progress Bar */}
+      <DraggableScrollBar
+        progress={scrollProgress}
+        onProgressChange={(newProgress) => {
+          // When user drags the bar, update scroll position
+          const delta = (newProgress - scrollProgress) * 0.5; // Smooth movement multiplier
+          scrollDeltaRef.current += delta;
+          setScrollProgress(newProgress);
+          accumulatedScrollRef.current = newProgress * 100; // Sync accumulated scroll
+        }}
+      />
 
       {/* Grainy 3D Background */}
       <div
@@ -1055,10 +1226,10 @@ export default function ShopPage() {
         <BackgroundSystem scrollProgress={scrollProgress} />
       </div>
 
-      {/* Floating Menu */}
-      <nav className="absolute top-0 left-0 right-0 z-40 px-4 md:px-6 py-4 md:py-5">
-        <div className="flex items-center justify-between">
-          {/* Logo */}
+      {/* Top Header - Logo left */}
+      <header className="absolute top-0 left-0 right-0 z-40 px-4 md:px-6 py-4 md:py-5">
+        <div className="flex items-center justify-start">
+          {/* Logo - left aligned */}
           <a href="https://onsiteclub.ca">
             <img
               src="/assets/logo-onsite-club.png"
@@ -1066,46 +1237,93 @@ export default function ShopPage() {
               className="h-8 md:h-10 w-auto"
             />
           </a>
-
-          {/* Categories - centered on mobile */}
-          <div className="flex items-center gap-3 md:gap-6">
-            {categories.map(({ key, label }) => (
-              <button
-                key={key}
-                onClick={() => setActiveCategory(key)}
-                className={`font-mono text-xs md:text-sm tracking-wider transition-all ${
-                  activeCategory === key
-                    ? 'text-[#1B2B27] font-bold'
-                    : 'text-[#1B2B27]/60 hover:text-[#1B2B27]'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {/* Right menu - simplified on mobile */}
-          <div className="flex items-center gap-3 md:gap-6">
-            <a
-              href="/cart"
-              className="font-mono text-xs md:text-sm text-[#1B2B27] tracking-wider hover:text-[#1B2B27]/70 transition-colors"
-            >
-              BAG{cartItems.length > 0 && `(${cartItems.length})`}
-            </a>
-            <a
-              href="/login"
-              className="hidden md:block font-mono text-sm text-[#1B2B27] tracking-wider hover:text-[#1B2B27]/70 transition-colors"
-            >
-              LOGIN
-            </a>
-            <a
-              href="https://onsiteclub.ca"
-              className="hidden md:block font-mono text-sm text-[#1B2B27]/60 tracking-wider hover:text-[#1B2B27] transition-colors"
-            >
-              ← SITE
-            </a>
-          </div>
         </div>
+      </header>
+
+      {/* Left Sidebar - Categories */}
+      <nav className="fixed left-4 md:left-8 top-1/2 -translate-y-1/2 z-40 hidden md:flex flex-col gap-6">
+        {categories.map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setActiveCategory(key)}
+            className={`group relative font-mono text-xs tracking-[0.2em] transition-all duration-300 text-left
+              ${activeCategory === key
+                ? 'text-[#1B2B27] font-bold scale-110 translate-x-2'
+                : 'text-[#1B2B27]/50 hover:text-[#1B2B27] hover:scale-110 hover:translate-x-2'
+              }`}
+          >
+            {label}
+            {/* Diagonal underline on hover/active */}
+            <span
+              className={`absolute -bottom-1 left-0 h-[2px] bg-[#B8860B] transition-all duration-300 origin-left
+                ${activeCategory === key
+                  ? 'w-full rotate-[-8deg]'
+                  : 'w-0 group-hover:w-full rotate-[-8deg]'
+                }`}
+              style={{ transformOrigin: 'left center' }}
+            />
+          </button>
+        ))}
+      </nav>
+
+      {/* Right Sidebar - Secondary Menu */}
+      <nav className="fixed right-4 md:right-8 top-1/2 -translate-y-1/2 z-40 hidden md:flex flex-col gap-6 items-end">
+        <a
+          href="/cart"
+          className={`group relative font-mono text-xs tracking-[0.2em] transition-all duration-300
+            ${cartItems.length > 0
+              ? 'text-[#1B2B27] font-bold scale-110 -translate-x-2'
+              : 'text-[#1B2B27]/50 hover:text-[#1B2B27] hover:scale-110 hover:-translate-x-2'
+            }`}
+        >
+          BAG{cartItems.length > 0 && <span className="text-[#B8860B] ml-1">({cartItems.length})</span>}
+          {/* Always show underline when cart has items, hover for empty */}
+          <span
+            className={`absolute -bottom-1 right-0 h-[2px] bg-[#B8860B] rotate-[8deg] transition-all duration-300 origin-right
+              ${cartItems.length > 0 ? 'w-full' : 'w-0 group-hover:w-full'}`}
+          />
+        </a>
+        <a
+          href="/login"
+          className="group relative font-mono text-xs tracking-[0.2em] text-[#1B2B27]/50 hover:text-[#1B2B27] hover:scale-110 hover:-translate-x-2 transition-all duration-300"
+        >
+          LOGIN
+          <span className="absolute -bottom-1 right-0 h-[2px] w-0 bg-[#B8860B] group-hover:w-full rotate-[8deg] transition-all duration-300 origin-right" />
+        </a>
+        <a
+          href="https://onsiteclub.ca"
+          className="group relative font-mono text-xs tracking-[0.2em] text-[#1B2B27]/50 hover:text-[#1B2B27] hover:scale-110 hover:-translate-x-2 transition-all duration-300"
+        >
+          SITE
+          <span className="absolute -bottom-1 right-0 h-[2px] w-0 bg-[#B8860B] group-hover:w-full rotate-[8deg] transition-all duration-300 origin-right" />
+        </a>
+      </nav>
+
+      {/* Mobile Menu - Horizontal at top */}
+      <nav className="md:hidden fixed top-16 left-0 right-0 z-40 px-4 py-2 flex justify-center gap-4">
+        {categories.map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setActiveCategory(key)}
+            className={`font-mono text-[10px] tracking-wider transition-all ${
+              activeCategory === key
+                ? 'text-[#1B2B27] font-bold'
+                : 'text-[#1B2B27]/50'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+        <a
+          href="/cart"
+          className={`font-mono text-[10px] tracking-wider transition-all ${
+            cartItems.length > 0
+              ? 'text-[#1B2B27] font-bold'
+              : 'text-[#1B2B27]/50'
+          }`}
+        >
+          BAG{cartItems.length > 0 && <span className="text-[#B8860B]">({cartItems.length})</span>}
+        </a>
       </nav>
 
       {/* Floating Products */}
